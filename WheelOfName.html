@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wheel of Names - Edisi Rahsia</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap');
+        
+        body {
+            font-family: 'Roboto', sans-serif;
+            background: radial-gradient(circle at center, #2c3e50 0%, #000000 100%);
+            color: white;
+            height: 100vh;
+            overflow: hidden;
+            transition: background 0.3s ease;
+        }
+
+        /* Gaya Roda */
+        .wheel-outer-container {
+            position: relative;
+            width: 100%;
+            max-width: 650px;
+            aspect-ratio: 1/1;
+            transition: all 0.5s ease;
+        }
+
+        #wheel-canvas {
+            width: 100%;
+            height: 100%;
+        }
+
+        /* Gaya Penunjuk (Pointer) */
+        .pointer-triangle {
+            position: absolute;
+            right: -10px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 0;
+            height: 0;
+            border-top: 20px solid transparent;
+            border-bottom: 20px solid transparent;
+            border-right: 35px solid #f1c40f;
+            z-index: 10;
+        }
+
+        /* Sidebar */
+        .sidebar-panel {
+            background-color: rgba(26, 26, 27, 0.95);
+            border-left: 1px solid #333;
+            transition: all 0.3s ease;
+        }
+
+        .tab-active {
+            border-bottom: 3px solid #3b82f6;
+            color: white;
+        }
+
+        /* UI Skrin Penuh (Fullscreen) */
+        .is-fullscreen .sidebar-panel { display: none; }
+        .is-fullscreen .nav-normal-items { display: none; }
+        .is-fullscreen .nav-fullscreen-items { display: flex !important; }
+        .is-fullscreen .wheel-outer-container { max-width: 85vh; }
+        .nav-fullscreen-items { display: none; }
+
+        /* Panel Rahsia */
+        .hidden-admin { display: none; }
+        .hidden-admin.show { display: flex; }
+
+        /* Scrollbar kustom */
+        textarea::-webkit-scrollbar, .modal-scroll::-webkit-scrollbar, .admin-scroll::-webkit-scrollbar { width: 6px; }
+        textarea::-webkit-scrollbar-track, .modal-scroll::-webkit-scrollbar-track, .admin-scroll::-webkit-scrollbar-track { background: #1a1a1b; }
+        textarea::-webkit-scrollbar-thumb, .modal-scroll::-webkit-scrollbar-thumb, .admin-scroll::-webkit-scrollbar-thumb { background: #444; border-radius: 4px; }
+
+        .confetti { position: fixed; pointer-events: none; z-index: 100; }
+
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-fadeIn { animation: fadeIn 0.2s ease-out forwards; }
+
+        input[type=range] { accent-color: #3b82f6; }
+    </style>
+</head>
+<body id="app-body" class="flex flex-col">
+
+    <!-- Bar Navigasi Atas -->
+    <nav class="h-14 bg-[#1a1a1b] border-b border-[#333] flex items-center justify-between px-4 z-50 transition-all">
+        <div class="flex items-center gap-4 h-full">
+            <div id="logo-trigger" class="flex items-center h-full cursor-pointer select-none group">
+                <span class="font-bold text-lg tracking-tight hover:text-blue-400 transition-colors">wheelofnames.com</span>
+            </div>
+        </div>
+
+        <!-- Menu Biasa -->
+        <div class="nav-normal-items hidden md:flex items-center gap-6 text-sm text-gray-300">
+            <button id="customize-btn" class="hover:text-white transition-colors"><i class="fa-solid fa-palette mr-1"></i> Ubah Suai</button>
+            <button class="hover:text-white" onclick="location.reload()"><i class="fa-solid fa-file mr-1"></i> Baru</button>
+            <button class="hover:text-white"><i class="fa-solid fa-folder-open mr-1"></i> Buka</button>
+            <button class="hover:text-white"><i class="fa-solid fa-floppy-disk mr-1"></i> Simpan</button>
+            <button class="hover:text-white"><i class="fa-solid fa-share-nodes mr-1"></i> Kongsi</button>
+            <button class="hover:text-white"><i class="fa-solid fa-images mr-1"></i> Galeri</button>
+            <button id="fullscreen-btn" class="hover:text-white"><i class="fa-solid fa-expand"></i></button>
+            <button class="hover:text-white">Lagi <i class="fa-solid fa-caret-down"></i></button>
+            <button class="hover:text-white"><i class="fa-solid fa-globe mr-1"></i> Bahasa Melayu</button>
+        </div>
+
+        <!-- Menu Fullscreen -->
+        <div class="nav-fullscreen-items items-center gap-4 text-gray-300">
+            <button class="hover:text-white text-lg"><i class="fa-solid fa-folder-open"></i></button>
+            <button id="exit-fullscreen-btn" class="hover:text-white text-lg"><i class="fa-solid fa-compress"></i></button>
+        </div>
+    </nav>
+
+    <div class="flex-1 flex overflow-hidden">
+        <!-- Bahagian Kiri: Roda -->
+        <div class="flex-1 relative flex flex-col items-center justify-center p-8 transition-all">
+            <div class="wheel-outer-container">
+                <canvas id="wheel-canvas" width="1000" height="1000"></canvas>
+                <div class="pointer-triangle"></div>
+                <button id="spin-btn" class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-28 h-28 rounded-full z-20 cursor-pointer outline-none"></button>
+            </div>
+
+            <!-- Panel Kawalan Rahsia Admin -->
+            <div id="admin-panel" class="hidden-admin absolute bottom-10 bg-slate-900/95 backdrop-blur-lg p-5 rounded-2xl border-2 border-indigo-500 shadow-[0_0_40px_rgba(79,70,229,0.4)] w-96 z-40 max-h-[80vh] flex-col">
+                <div class="flex items-center justify-between mb-3 shrink-0">
+                    <div class="flex items-center gap-2">
+                        <div class="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
+                        <span class="text-[10px] font-black text-indigo-400 uppercase tracking-widest">Admin Pemenang Rahsia</span>
+                    </div>
+                    <button onclick="document.getElementById('admin-panel').classList.remove('show')" class="text-gray-500 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+                
+                <div class="space-y-4 flex-1 flex flex-col overflow-hidden">
+                    <div class="flex gap-2">
+                        <div class="flex-1">
+                            <label class="text-[10px] text-gray-400 uppercase block mb-1">Cari Nama</label>
+                            <input type="text" id="admin-search" class="w-full bg-slate-800 border border-slate-700 rounded-lg p-2 text-xs text-white outline-none focus:ring-1 focus:ring-indigo-500" placeholder="Taip nama...">
+                        </div>
+                        <div class="w-20">
+                            <label class="text-[10px] text-gray-400 uppercase block mb-1">Giliran</label>
+                            <input type="number" id="admin-turn-input" min="1" value="1" class="w-full bg-slate-800 border border-slate-700 rounded-lg p-2 text-xs text-white outline-none">
+                        </div>
+                    </div>
+
+                    <!-- Dropdown Hasil Carian -->
+                    <div id="admin-search-results" class="bg-slate-800/50 border border-slate-700 rounded-lg max-h-32 overflow-y-auto admin-scroll">
+                        <!-- Dinamik -->
+                    </div>
+                    
+                    <div class="flex-1 flex flex-col overflow-hidden pt-2 border-t border-slate-800">
+                        <div class="flex justify-between items-center mb-2">
+                            <p class="text-[10px] text-gray-300 font-bold uppercase">Senarai Rigged</p>
+                            <span id="current-spin-display" class="text-[10px] bg-slate-700 px-2 py-0.5 rounded text-indigo-300 font-mono">Pusingan: 0</span>
+                        </div>
+                        <div id="rigged-list-container" class="flex-1 bg-slate-950/50 border border-slate-700 rounded-lg p-2 overflow-y-auto admin-scroll">
+                            <!-- List pemenang terpilih -->
+                        </div>
+                    </div>
+                </div>
+
+                <p class="text-[9px] text-gray-500 mt-4 italic text-center shrink-0">Klik nama dalam carian untuk set pemenang bagi giliran tersebut.</p>
+            </div>
+        </div>
+
+        <!-- Bahagian Kanan: Sidebar -->
+        <div id="sidebar" class="w-80 sidebar-panel flex flex-col">
+            <div class="flex border-b border-[#333] h-12">
+                <button id="tab-entries" class="flex-1 flex items-center justify-center gap-2 font-bold tab-active transition-all">
+                    Entri <span id="entry-count" class="bg-blue-600 text-[10px] px-1.5 py-0.5 rounded-full">0</span>
+                </button>
+                <button id="tab-results" class="flex-1 flex items-center justify-center gap-2 font-bold text-gray-500 hover:text-gray-300 transition-all">
+                    Keputusan <span id="result-count" class="bg-gray-700 text-[10px] px-1.5 py-0.5 rounded-full">0</span>
+                </button>
+            </div>
+
+            <div id="content-entries" class="flex-1 flex flex-col p-3">
+                <div class="flex gap-2 mb-3">
+                    <button id="shuffle-btn" class="flex-1 bg-blue-600 hover:bg-blue-700 text-[11px] font-bold py-2.5 rounded flex items-center justify-center gap-1 transition-colors"><i class="fa-solid fa-shuffle"></i> Rawak</button>
+                    <button id="sort-btn" class="flex-1 bg-blue-600 hover:bg-blue-700 text-[11px] font-bold py-2.5 rounded flex items-center justify-center gap-1 transition-colors"><i class="fa-solid fa-arrow-up-z-a"></i> Susun</button>
+                    <button class="flex-1 bg-blue-600 hover:bg-blue-700 text-[11px] font-bold py-2.5 rounded flex items-center justify-center gap-1"><i class="fa-solid fa-image"></i> Imej</button>
+                </div>
+                
+                <textarea id="names-input" class="flex-1 w-full bg-[#1a1a1b] text-gray-300 p-4 rounded-md border border-[#333] focus:border-blue-500 outline-none resize-none text-sm font-medium leading-relaxed" spellcheck="false" placeholder="Satu nama setiap baris..."></textarea>
+            </div>
+
+            <div id="content-results" class="hidden flex-1 flex flex-col p-3 overflow-y-auto">
+                <div id="results-list" class="flex flex-col gap-2"></div>
+                <div id="no-results" class="flex-1 flex items-center justify-center text-gray-500 italic text-sm">Tiada keputusan lagi</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Customize (Tengah) -->
+    <div id="customize-modal" class="fixed inset-0 bg-black/80 hidden items-center justify-center z-[100] px-4 backdrop-blur-md">
+        <div class="bg-[#1a1a1b] rounded-2xl border border-[#333] max-w-2xl w-full flex flex-col shadow-2xl overflow-hidden h-[85vh]">
+            <div class="flex border-b border-[#333] bg-[#242425]">
+                <button onclick="switchConfigTab('during')" id="tab-config-during" class="px-6 py-4 text-sm font-bold border-b-2 border-blue-500 text-white">Semasa pusing</button>
+                <button onclick="switchConfigTab('after')" id="tab-config-after" class="px-6 py-4 text-sm font-bold text-gray-500 hover:text-gray-300">Selepas pusing</button>
+                <button onclick="switchConfigTab('appearance')" id="tab-config-appearance" class="px-6 py-4 text-sm font-bold text-gray-500 hover:text-gray-300">Rupa</button>
+            </div>
+
+            <div class="flex-1 overflow-y-auto p-8 space-y-8 modal-scroll">
+                <div id="config-content-during" class="space-y-6">
+                    <div class="flex items-center gap-10">
+                        <label class="w-32 text-sm text-gray-400">Bunyi</label>
+                        <select id="config-sound" class="flex-1 bg-slate-800 border border-slate-700 rounded p-2 text-sm outline-none">
+                            <option value="ticking">Ticking sound</option>
+                            <option value="none">Tiada bunyi</option>
+                        </select>
+                    </div>
+
+                    <div class="flex items-center gap-10">
+                        <label class="w-32 text-sm text-gray-400">Kelantangan</label>
+                        <input type="range" id="config-volume" min="0" max="100" value="50" class="flex-1">
+                    </div>
+
+                    <div class="pt-4 border-t border-[#333]">
+                        <p class="text-sm font-bold mb-4">Masa pusingan (saat)</p>
+                        <input type="range" id="config-spin-time" min="1" max="60" value="7" class="w-full">
+                    </div>
+
+                    <div class="pt-4 border-t border-[#333]">
+                        <p class="text-sm font-bold mb-2">Bilangan maksimum nama pada roda</p>
+                        <input type="range" id="config-max-names" min="1" max="1000" value="500" class="w-full">
+                    </div>
+                </div>
+                <div id="config-content-after" class="hidden text-gray-500 italic text-center">Akan datang...</div>
+                <div id="config-content-appearance" class="hidden text-gray-500 italic text-center">Akan datang...</div>
+            </div>
+
+            <div class="p-6 bg-[#1a1a1b] flex justify-end gap-3 border-t border-[#333]">
+                <button onclick="closeConfigModal()" class="px-6 py-2 text-sm font-bold text-gray-400 hover:text-white">Batal</button>
+                <button onclick="saveConfig()" class="px-8 py-2 text-sm font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-md">OK</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Winner -->
+    <div id="winner-modal" class="fixed inset-0 bg-black/90 hidden items-center justify-center z-[100] px-4 backdrop-blur-md">
+        <div class="bg-[#1a1a1b] p-10 md:p-14 rounded-[2.5rem] border border-[#333] max-w-lg w-full text-center relative shadow-2xl">
+            <div class="text-xs font-bold text-blue-500 uppercase tracking-[0.5em] mb-6">Pemenang Ialah!</div>
+            <div id="winner-name" class="text-6xl font-black text-white mb-12 break-words"></div>
+            <div class="flex gap-4">
+                <button id="close-modal" class="flex-1 py-4 bg-gray-800 text-white font-bold rounded-2xl transition-all">Tutup</button>
+                <button id="remove-winner-btn" class="flex-1 py-4 bg-blue-600 text-white font-bold rounded-2xl transition-all">Keluarkan</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // References
+        let namesInput, entryCount, spinBtn, winnerModal, winnerNameText, closeModal, removeWinnerBtn, shuffleBtn, sortBtn, logoTrigger, adminPanel, spinDisplay, fullscreenBtn, exitFullscreenBtn, customizeBtn, configModal, appBody, tabEntries, tabResults, contentEntries, contentResults, resultsList, noResults, resultCountSpan;
+        let adminSearch, adminTurnInput, adminSearchResults, riggedListContainer;
+
+        const canvas = document.getElementById('wheel-canvas');
+        const ctx = canvas.getContext('2d');
+
+        // OFF-SCREEN BUFFERING
+        const offscreenCanvas = document.createElement('canvas');
+        const offCtx = offscreenCanvas.getContext('2d');
+        offscreenCanvas.width = 1000;
+        offscreenCanvas.height = 1000;
+
+        let config = { sound: 'ticking', volume: 50, spinTime: 7, maxNames: 500 };
+        let names = ["Ali", "Abu", "Siti", "Ah Chong", "Ramasamy", "Fatimah", "Zul", "Mei Ling"];
+        let resultsArr = [];
+        let currentRotation = 0;
+        let isSpinning = false;
+        let lastWinner = "";
+        let spinCount = 0;
+        let audioCtx = null;
+        let riggedWinnersMap = {}; 
+
+        function initAudio() { if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+
+        function playTick() {
+            if (!audioCtx || config.sound === 'none') return;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(600, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(100, audioCtx.currentTime + 0.05);
+            gain.gain.setValueAtTime((config.volume / 100) * 0.15, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.05);
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            osc.start(); osc.stop(audioCtx.currentTime + 0.05);
+        }
+
+        function playWinSound() {
+            if (!audioCtx || config.sound === 'none') return;
+            const now = audioCtx.currentTime;
+            const vol = config.volume / 100;
+            const notes = [261.63, 329.63, 392.00, 523.25];
+            notes.forEach((freq, i) => {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(freq, now + i * 0.12);
+                gain.gain.setValueAtTime(0, now + i * 0.12);
+                gain.gain.linearRampToValueAtTime(vol * 0.2, now + i * 0.12 + 0.05);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.12 + 0.8);
+                osc.connect(gain); gain.connect(audioCtx.destination);
+                osc.start(now + i * 0.12); osc.stop(now + i * 0.12 + 1.0);
+            });
+        }
+
+        const colors = ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
+
+        function updateElementRefs() {
+            namesInput = document.getElementById('names-input');
+            entryCount = document.getElementById('entry-count');
+            spinBtn = document.getElementById('spin-btn');
+            winnerModal = document.getElementById('winner-modal');
+            winnerNameText = document.getElementById('winner-name');
+            closeModal = document.getElementById('close-modal');
+            removeWinnerBtn = document.getElementById('remove-winner-btn');
+            shuffleBtn = document.getElementById('shuffle-btn');
+            sortBtn = document.getElementById('sort-btn');
+            logoTrigger = document.getElementById('logo-trigger');
+            adminPanel = document.getElementById('admin-panel');
+            spinDisplay = document.getElementById('current-spin-display');
+            fullscreenBtn = document.getElementById('fullscreen-btn');
+            exitFullscreenBtn = document.getElementById('exit-fullscreen-btn');
+            customizeBtn = document.getElementById('customize-btn');
+            configModal = document.getElementById('customize-modal');
+            appBody = document.getElementById('app-body');
+            tabEntries = document.getElementById('tab-entries');
+            tabResults = document.getElementById('tab-results');
+            contentEntries = document.getElementById('content-entries');
+            contentResults = document.getElementById('content-results');
+            resultsList = document.getElementById('results-list');
+            noResults = document.getElementById('no-results');
+            resultCountSpan = document.getElementById('result-count');
+            adminSearch = document.getElementById('admin-search');
+            adminTurnInput = document.getElementById('admin-turn-input');
+            adminSearchResults = document.getElementById('admin-search-results');
+            riggedListContainer = document.getElementById('rigged-list-container');
+        }
+
+        function updateWheelBuffer() {
+            const centerX = 500; const centerY = 500; const radius = 480;
+            offCtx.clearRect(0, 0, 1000, 1000);
+            if (names.length === 0) return;
+            const visibleNames = names.slice(0, config.maxNames);
+            const sliceAngle = (Math.PI * 2) / visibleNames.length;
+            visibleNames.forEach((name, i) => {
+                const startAngle = i * sliceAngle;
+                offCtx.beginPath(); offCtx.moveTo(centerX, centerY);
+                offCtx.arc(centerX, centerY, radius, startAngle, startAngle + sliceAngle);
+                offCtx.fillStyle = colors[i % colors.length]; offCtx.fill();
+                offCtx.strokeStyle = "rgba(255,255,255,0.1)"; offCtx.lineWidth = 1; offCtx.stroke();
+                offCtx.save(); offCtx.translate(centerX, centerY); offCtx.rotate(startAngle + sliceAngle/2);
+                offCtx.textAlign = "right"; offCtx.fillStyle = "#fff";
+                const fontSize = Math.max(12, Math.min(50, 700 / visibleNames.length));
+                offCtx.font = `700 ${fontSize}px Roboto`;
+                offCtx.fillText(name.length > 20 ? name.substring(0, 17) + "..." : name, radius - 40, fontSize/3);
+                offCtx.restore();
+            });
+            offCtx.beginPath(); offCtx.arc(centerX, centerY, 65, 0, Math.PI * 2);
+            offCtx.fillStyle = "#fff"; offCtx.fill();
+            offCtx.strokeStyle = "rgba(0,0,0,0.1)"; offCtx.lineWidth = 8; offCtx.stroke();
+        }
+
+        function drawWheel() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            if (names.length === 0) {
+                ctx.fillStyle = "#444"; ctx.font = "bold 40px Roboto"; ctx.textAlign = "center";
+                ctx.fillText("Masukkan nama untuk mula", canvas.width/2, canvas.height/2);
+                return;
+            }
+            ctx.save();
+            ctx.translate(canvas.width / 2, canvas.height / 2);
+            ctx.rotate(currentRotation);
+            ctx.drawImage(offscreenCanvas, -500, -500);
+            ctx.restore();
+        }
+
+        let debounceTimer;
+        function updateNames() {
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(() => {
+                const raw = namesInput.value.trim();
+                names = raw ? raw.split('\n').map(n => n.trim()).filter(n => n !== "") : [];
+                entryCount.textContent = names.length;
+                updateWheelBuffer();
+                drawWheel();
+                updateAdminSearchList();
+            }, 250);
+        }
+
+        function updateAdminSearchList() {
+            const query = adminSearch.value.toLowerCase();
+            const filtered = names.filter(n => n.toLowerCase().includes(query)).slice(0, 30);
+            adminSearchResults.innerHTML = filtered.map(name => `
+                <div class="p-2 border-b border-slate-700 hover:bg-indigo-600 cursor-pointer text-xs transition-colors" onclick="addRiggedWinner('${name.replace(/'/g, "\\'")}')">
+                    ${name}
+                </div>
+            `).join('');
+            if (filtered.length === 0) {
+                adminSearchResults.innerHTML = `<div class="p-4 text-center text-gray-500 text-[10px]">Tiada nama ditemui</div>`;
+            }
+        }
+
+        function addRiggedWinner(name) {
+            const turn = parseInt(adminTurnInput.value);
+            if (isNaN(turn) || turn < 1) return;
+            riggedWinnersMap[turn] = name;
+            renderRiggedList();
+            adminTurnInput.value = turn + 1;
+        }
+
+        window.removeRiggedEntry = function(turn) {
+            delete riggedWinnersMap[turn];
+            renderRiggedList();
+        }
+
+        function renderRiggedList() {
+            const sortedTurns = Object.keys(riggedWinnersMap).sort((a, b) => a - b);
+            riggedListContainer.innerHTML = sortedTurns.map(turn => `
+                <div class="flex justify-between items-center bg-slate-800 p-2 mb-1 rounded border border-slate-700 group animate-fadeIn">
+                    <span class="text-[11px] font-bold text-indigo-400">#${turn}: <span class="text-white">${riggedWinnersMap[turn]}</span></span>
+                    <button onclick="removeRiggedEntry(${turn})" class="text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><i class="fa-solid fa-trash-can"></i></button>
+                </div>
+            `).join('');
+            if (sortedTurns.length === 0) riggedListContainer.innerHTML = `<div class="text-center text-gray-500 py-4 text-[10px]">Belum ada pemenang rahsia.</div>`;
+        }
+
+        function spin() {
+            if (isSpinning || names.length === 0) return;
+            initAudio();
+            isSpinning = true;
+            spinCount++;
+            spinDisplay.textContent = `Pusingan: ${spinCount}`;
+
+            const startTime = performance.now();
+            const duration = config.spinTime * 1000;
+            const startRotation = currentRotation;
+            let finalTargetRotation;
+
+            const riggedWinnerName = riggedWinnersMap[spinCount];
+            const riggedIdx = riggedWinnerName ? names.indexOf(riggedWinnerName) : -1;
+
+            if (riggedIdx !== -1) {
+                const visibleCount = Math.min(names.length, config.maxNames);
+                const sliceAngle = (Math.PI * 2) / visibleCount;
+                const stopAngleAtZero = (Math.PI * 2) - ((riggedIdx % visibleCount) * sliceAngle + (sliceAngle / 2));
+                const currentMod = startRotation % (Math.PI * 2);
+                let delta = (stopAngleAtZero - currentMod + (Math.PI * 2)) % (Math.PI * 2);
+                if (delta < 0.5) delta += Math.PI * 2;
+                finalTargetRotation = startRotation + (Math.PI * 2 * 10) + delta;
+            } else {
+                finalTargetRotation = startRotation + (Math.PI * 2 * (8 + Math.random() * 4)) + Math.random() * Math.PI * 2;
+            }
+
+            let lastTickIdx = -1;
+            function animate(time) {
+                const elapsed = time - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+                const easeOut = 1 - Math.pow(1 - progress, 3);
+                currentRotation = startRotation + (finalTargetRotation - startRotation) * easeOut;
+                const visibleCount = Math.min(names.length, config.maxNames);
+                const sliceAngle = (Math.PI * 2) / visibleCount;
+                const currentTickIdx = Math.floor(((Math.PI * 2) - (currentRotation % (Math.PI * 2)) + (Math.PI * 2)) % (Math.PI * 2) / sliceAngle) % visibleCount;
+                if (currentTickIdx !== lastTickIdx) { playTick(); lastTickIdx = currentTickIdx; }
+                drawWheel();
+                if (progress < 1) requestAnimationFrame(animate);
+                else { isSpinning = false; finishSpin(); }
+            }
+            requestAnimationFrame(animate);
+        }
+
+        function finishSpin() {
+            const visibleCount = Math.min(names.length, config.maxNames);
+            const sliceAngle = (Math.PI * 2) / visibleCount;
+            const normRot = (currentRotation % (Math.PI * 2) + (Math.PI * 2)) % (Math.PI * 2);
+            let winIdx = Math.floor(((Math.PI * 2) - normRot) / sliceAngle) % visibleCount;
+            lastWinner = names[winIdx];
+            winnerNameText.textContent = lastWinner;
+            winnerModal.classList.remove('hidden'); winnerModal.classList.add('flex');
+            resultsArr.unshift({name: lastWinner, time: new Date().toLocaleTimeString()});
+            resultCountSpan.textContent = resultsArr.length;
+            noResults.classList.add('hidden');
+            resultsList.innerHTML = resultsArr.map(r => `<div class="bg-[#242425] p-3 rounded border border-[#333] flex justify-between"><span>${r.name}</span><span class="text-gray-500">${r.time}</span></div>`).join('');
+            playWinSound();
+            createConfetti();
+        }
+
+        function switchConfigTab(tab) {
+            ['during', 'after', 'appearance'].forEach(t => {
+                const btn = document.getElementById(`tab-config-${t}`);
+                const content = document.getElementById(`config-content-${t}`);
+                if (t === tab) { btn.classList.add('border-b-2', 'border-blue-500', 'text-white'); content.classList.remove('hidden'); }
+                else { btn.classList.remove('border-b-2', 'border-blue-500', 'text-white'); content.classList.add('hidden'); }
+            });
+        }
+
+        function closeConfigModal() { configModal.classList.add('hidden'); configModal.classList.remove('flex'); }
+        function saveConfig() {
+            config.spinTime = parseInt(document.getElementById('config-spin-time').value);
+            config.volume = parseInt(document.getElementById('config-volume').value);
+            config.maxNames = parseInt(document.getElementById('config-max-names').value);
+            closeConfigModal();
+            updateWheelBuffer();
+            drawWheel();
+        }
+
+        function createConfetti() {
+            for (let i = 0; i < 120; i++) {
+                const c = document.createElement('div'); c.className = 'confetti';
+                const col = colors[Math.floor(Math.random() * colors.length)];
+                c.style.cssText = `width:10px;height:10px;background:${col};left:${Math.random()*100}vw;top:-20px;`;
+                document.body.appendChild(c);
+                c.animate([{top:'-20px',opacity:1},{top:'100vh',opacity:0,transform:`rotate(${Math.random()*1500}deg)`}],{duration:3000+Math.random()*2500, easing:'ease-out'}).onfinish = () => c.remove();
+            }
+        }
+
+        window.onload = function() {
+            updateElementRefs();
+            namesInput.value = names.join('\n');
+            updateNames();
+            namesInput.addEventListener('input', updateNames);
+            spinBtn.addEventListener('click', spin);
+            closeModal.addEventListener('click', () => winnerModal.classList.add('hidden'));
+            removeWinnerBtn.addEventListener('click', () => {
+                const idx = names.indexOf(lastWinner);
+                if (idx > -1) { names.splice(idx, 1); namesInput.value = names.join('\n'); updateNames(); }
+                winnerModal.classList.add('hidden');
+            });
+            shuffleBtn.addEventListener('click', () => { names.sort(() => Math.random() - 0.5); namesInput.value = names.join('\n'); updateNames(); });
+            sortBtn.addEventListener('click', () => { names.sort(); namesInput.value = names.join('\n'); updateNames(); });
+            fullscreenBtn.addEventListener('click', () => document.documentElement.requestFullscreen());
+            exitFullscreenBtn.addEventListener('click', () => document.exitFullscreen());
+            customizeBtn.addEventListener('click', () => {
+                document.getElementById('config-volume').value = config.volume;
+                document.getElementById('config-spin-time').value = config.spinTime;
+                document.getElementById('config-max-names').value = config.maxNames;
+                configModal.classList.remove('hidden');
+                configModal.classList.add('flex');
+            });
+            adminSearch.addEventListener('input', updateAdminSearchList);
+            document.addEventListener('fullscreenchange', () => {
+                if (document.fullscreenElement) appBody.classList.add('is-fullscreen');
+                else appBody.classList.remove('is-fullscreen');
+                setTimeout(() => { updateWheelBuffer(); drawWheel(); }, 150);
+            });
+            tabEntries.addEventListener('click', () => { tabEntries.classList.add('tab-active'); tabResults.classList.remove('tab-active'); contentEntries.classList.remove('hidden'); contentResults.classList.add('hidden'); });
+            tabResults.addEventListener('click', () => { tabResults.classList.add('tab-active'); tabEntries.classList.remove('tab-active'); contentResults.classList.remove('hidden'); contentEntries.classList.add('hidden'); });
+            let clicks = 0; logoTrigger.addEventListener('click', () => { clicks++; if (clicks >= 3) { adminPanel.classList.toggle('show'); renderRiggedList(); clicks = 0; } });
+        };
+    </script>
+</body>
+</html>
