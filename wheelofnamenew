@@ -1,0 +1,684 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wheel of Names - Edisi Rahsia & Hadiah</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap');
+        
+        body {
+            font-family: 'Roboto', sans-serif;
+            background: radial-gradient(circle at center, #2c3e50 0%, #000000 100%);
+            color: white;
+            height: 100vh;
+            overflow: hidden;
+            transition: background 0.3s ease;
+        }
+
+        /* Gaya Roda */
+        .wheel-outer-container {
+            position: relative;
+            width: 100%;
+            max-width: 650px;
+            aspect-ratio: 1/1;
+            transition: all 0.5s ease;
+        }
+
+        #wheel-canvas {
+            width: 100%;
+            height: 100%;
+        }
+
+        .pointer-triangle {
+            position: absolute;
+            right: -10px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 0;
+            height: 0;
+            border-top: 20px solid transparent;
+            border-bottom: 20px solid transparent;
+            border-right: 35px solid #f1c40f;
+            z-index: 10;
+        }
+
+        .sidebar-panel {
+            background-color: rgba(26, 26, 27, 0.95);
+            border-left: 1px solid #333;
+            transition: all 0.3s ease;
+        }
+
+        .tab-active {
+            border-bottom: 3px solid #3b82f6;
+            color: white;
+        }
+
+        .is-fullscreen .sidebar-panel { display: none; }
+        .is-fullscreen .nav-normal-items { display: none; }
+        .is-fullscreen .nav-fullscreen-items { display: flex !important; }
+        .is-fullscreen .wheel-outer-container { max-width: 85vh; }
+        .nav-fullscreen-items { display: none; }
+
+        .hidden-admin { display: none; }
+        .hidden-admin.show { display: flex; }
+
+        textarea::-webkit-scrollbar, .modal-scroll::-webkit-scrollbar, .admin-scroll::-webkit-scrollbar { width: 6px; }
+        textarea::-webkit-scrollbar-track, .modal-scroll::-webkit-scrollbar-track, .admin-scroll::-webkit-scrollbar-track { background: #1a1a1b; }
+        textarea::-webkit-scrollbar-thumb, .modal-scroll::-webkit-scrollbar-thumb, .admin-scroll::-webkit-scrollbar-thumb { background: #444; border-radius: 4px; }
+
+        .confetti { position: fixed; pointer-events: none; z-index: 100; }
+
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-fadeIn { animation: fadeIn 0.3s ease-out forwards; }
+
+        input[type=range] { accent-color: #3b82f6; }
+    </style>
+</head>
+<body id="app-body" class="flex flex-col">
+
+    <!-- Bar Navigasi -->
+    <nav class="h-14 bg-[#1a1a1b] border-b border-[#333] flex items-center justify-between px-4 z-50 transition-all">
+        <div class="flex items-center gap-4 h-full">
+            <div id="logo-trigger" class="flex items-center h-full cursor-pointer select-none group">
+                <span class="font-bold text-lg tracking-tight hover:text-blue-400 transition-colors">wheelofnames.com</span>
+            </div>
+        </div>
+
+        <div class="nav-normal-items hidden md:flex items-center gap-6 text-sm text-gray-300">
+            <button id="customize-btn" class="hover:text-white transition-colors"><i class="fa-solid fa-palette mr-1"></i> Ubah Suai</button>
+            <button class="hover:text-white" onclick="location.reload()"><i class="fa-solid fa-file mr-1"></i> Baru</button>
+            <button class="hover:text-white"><i class="fa-solid fa-folder-open mr-1"></i> Buka</button>
+            <button class="hover:text-white"><i class="fa-solid fa-floppy-disk mr-1"></i> Simpan</button>
+            <button class="hover:text-white"><i class="fa-solid fa-share-nodes mr-1"></i> Kongsi</button>
+            <button class="hover:text-white"><i class="fa-solid fa-images mr-1"></i> Galeri</button>
+            <button id="fullscreen-btn" class="hover:text-white"><i class="fa-solid fa-expand"></i></button>
+            <button class="hover:text-white">Lagi <i class="fa-solid fa-caret-down"></i></button>
+            <button class="hover:text-white"><i class="fa-solid fa-globe mr-1"></i> Bahasa Melayu</button>
+        </div>
+
+        <div class="nav-fullscreen-items items-center gap-4 text-gray-300">
+            <button class="hover:text-white text-lg"><i class="fa-solid fa-folder-open"></i></button>
+            <button id="exit-fullscreen-btn" class="hover:text-white text-lg"><i class="fa-solid fa-compress"></i></button>
+        </div>
+    </nav>
+
+    <div class="flex-1 flex overflow-hidden">
+        <div class="flex-1 relative flex flex-col items-center justify-center p-8 transition-all">
+            <div class="wheel-outer-container">
+                <canvas id="wheel-canvas" width="1000" height="1000"></canvas>
+                <div class="pointer-triangle"></div>
+                <button id="spin-btn" class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-28 h-28 rounded-full z-20 cursor-pointer outline-none"></button>
+            </div>
+
+            <!-- Panel Kawalan Rahsia Admin -->
+            <div id="admin-panel" class="hidden-admin absolute bottom-10 bg-slate-900/95 backdrop-blur-lg p-5 rounded-2xl border-2 border-indigo-500 shadow-[0_0_40px_rgba(79,70,229,0.4)] w-[28rem] z-40 max-h-[85vh] flex-col">
+                <div class="flex items-center justify-between mb-3 shrink-0">
+                    <div class="flex items-center gap-2">
+                        <div class="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
+                        <span class="text-[10px] font-black text-indigo-400 uppercase tracking-widest">Admin Control Panel</span>
+                    </div>
+                    <button onclick="document.getElementById('admin-panel').classList.remove('show')" class="text-gray-500 hover:text-white transition-colors"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+                
+                <div class="flex-1 overflow-y-auto admin-scroll space-y-6 pr-1">
+                    <div class="bg-slate-800/40 p-3 rounded-xl border border-slate-700">
+                        <p class="text-[11px] text-indigo-300 font-bold uppercase mb-3"><i class="fa-solid fa-user-secret mr-1"></i> Rancangan Pemenang</p>
+                        <div class="flex gap-2 mb-3">
+                            <div class="flex-1">
+                                <input type="text" id="admin-search" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs text-white outline-none focus:ring-1 focus:ring-indigo-500" placeholder="Cari nama...">
+                            </div>
+                            <div class="w-20">
+                                <input type="number" id="admin-turn-input" min="1" value="1" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs text-white outline-none">
+                            </div>
+                        </div>
+                        <div id="admin-search-results" class="bg-slate-950/50 border border-slate-700 rounded-lg max-h-24 overflow-y-auto mb-3 admin-scroll"></div>
+                        <div id="rigged-list-container" class="space-y-1"></div>
+                    </div>
+
+                    <div class="bg-slate-800/40 p-3 rounded-xl border border-slate-700">
+                        <p class="text-[11px] text-green-400 font-bold uppercase mb-3"><i class="fa-solid fa-gift mr-1"></i> Hadiah Ikut Giliran</p>
+                        <div class="flex gap-2 mb-3">
+                            <div class="w-20 shrink-0">
+                                <label class="text-[9px] text-gray-400 block mb-1">Pusingan</label>
+                                <input type="number" id="prize-turn-input" min="1" value="1" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs text-white outline-none">
+                            </div>
+                            <div class="flex-1">
+                                <label class="text-[9px] text-gray-400 block mb-1">Muat Naik Gambar Hadiah</label>
+                                <button id="prize-upload-trigger" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-[10px] text-gray-300 hover:bg-slate-700 transition-colors flex items-center justify-center gap-2">
+                                    <i class="fa-solid fa-cloud-arrow-up text-green-400"></i> Pilih Gambar
+                                </button>
+                                <input type="file" id="prize-image-upload" class="hidden" accept="image/*">
+                            </div>
+                        </div>
+                        <div id="prize-list-container" class="space-y-2 max-h-40 overflow-y-auto admin-scroll"></div>
+                    </div>
+                </div>
+                
+                <div class="pt-3 border-t border-slate-800 flex justify-between items-center shrink-0">
+                    <span id="current-spin-display" class="text-[10px] bg-indigo-900/50 px-3 py-1 rounded text-indigo-300 font-mono">Pusingan: 0</span>
+                    <p class="text-[9px] text-gray-500 italic">Data disimpan dalam sesi ini sahaja.</p>
+                </div>
+            </div>
+        </div>
+
+        <div id="sidebar" class="w-80 sidebar-panel flex flex-col">
+            <div class="flex border-b border-[#333] h-12">
+                <button id="tab-entries" class="flex-1 flex items-center justify-center gap-2 font-bold tab-active transition-all">
+                    Entri <span id="entry-count" class="bg-blue-600 text-[10px] px-1.5 py-0.5 rounded-full">0</span>
+                </button>
+                <button id="tab-results" class="flex-1 flex items-center justify-center gap-2 font-bold text-gray-500 hover:text-gray-300 transition-all">
+                    Keputusan <span id="result-count" class="bg-gray-700 text-[10px] px-1.5 py-0.5 rounded-full">0</span>
+                </button>
+            </div>
+
+            <div id="content-entries" class="flex-1 flex flex-col p-3">
+                <div class="flex gap-2 mb-3">
+                    <button id="shuffle-btn" class="flex-1 bg-blue-600 hover:bg-blue-700 text-[11px] font-bold py-2.5 rounded flex items-center justify-center gap-1 transition-colors"><i class="fa-solid fa-shuffle"></i> Rawak</button>
+                    <button id="sort-btn" class="flex-1 bg-blue-600 hover:bg-blue-700 text-[11px] font-bold py-2.5 rounded flex items-center justify-center gap-1 transition-colors"><i class="fa-solid fa-arrow-up-z-a"></i> Susun</button>
+                    <button id="add-image-btn" class="flex-1 bg-blue-600 hover:bg-blue-700 text-[11px] font-bold py-2.5 rounded flex items-center justify-center gap-1 transition-colors"><i class="fa-solid fa-image"></i> Imej</button>
+                    <input type="file" id="image-upload" class="hidden" accept="image/*">
+                </div>
+                <textarea id="names-input" class="flex-1 w-full bg-[#1a1a1b] text-gray-300 p-4 rounded-md border border-[#333] focus:border-blue-500 outline-none resize-none text-sm font-medium leading-relaxed" spellcheck="false" placeholder="Satu nama setiap baris..."></textarea>
+            </div>
+
+            <div id="content-results" class="hidden flex-1 flex flex-col p-3 overflow-y-auto">
+                <div id="results-list" class="flex flex-col gap-2"></div>
+                <div id="no-results" class="flex-1 flex items-center justify-center text-gray-500 italic text-sm">Tiada keputusan lagi</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Customize -->
+    <div id="customize-modal" class="fixed inset-0 bg-black/80 hidden items-center justify-center z-[100] px-4 backdrop-blur-md">
+        <div class="bg-[#1a1a1b] rounded-2xl border border-[#333] max-w-2xl w-full flex flex-col shadow-2xl overflow-hidden h-[85vh]">
+            <div class="flex border-b border-[#333] bg-[#242425] shrink-0">
+                <button onclick="switchConfigTab('during')" id="tab-config-during" class="px-6 py-4 text-sm font-bold border-b-2 border-blue-500 text-white transition-all">Semasa pusing</button>
+                <button onclick="switchConfigTab('after')" id="tab-config-after" class="px-6 py-4 text-sm font-bold text-gray-500">Selepas pusing</button>
+                <button onclick="switchConfigTab('appearance')" id="tab-config-appearance" class="px-6 py-4 text-sm font-bold text-gray-500">Rupa</button>
+            </div>
+            <div class="flex-1 overflow-y-auto p-8 space-y-8 modal-scroll bg-[#1a1a1b]">
+                <div id="config-content-during" class="space-y-6">
+                    <div class="flex items-center gap-10">
+                        <label class="w-32 text-sm text-gray-400">Bunyi</label>
+                        <select id="config-sound" class="flex-1 bg-slate-800 border border-slate-700 rounded p-2 text-sm outline-none text-white">
+                            <option value="ticking">Ticking sound</option>
+                            <option value="none">Tiada bunyi</option>
+                        </select>
+                    </div>
+                    <div class="flex items-center gap-10">
+                        <label class="w-32 text-sm text-gray-400">Kelantangan</label>
+                        <input type="range" id="config-volume" min="0" max="100" value="50" class="flex-1">
+                    </div>
+                    <div class="pt-4 border-t border-[#333]">
+                        <p class="text-sm font-bold text-gray-200 mb-4">Masa pusingan (saat)</p>
+                        <input type="range" id="config-spin-time" min="1" max="60" value="7" class="w-full">
+                    </div>
+                    <div class="pt-4 border-t border-[#333]">
+                        <p class="text-sm font-bold text-gray-200 mb-2">Bilangan maksimum nama pada roda</p>
+                        <input type="range" id="config-max-names" min="1" max="1000" value="500" class="w-full">
+                    </div>
+                </div>
+            </div>
+            <div class="p-6 bg-[#1a1a1b] flex justify-end gap-3 border-t border-[#333] shrink-0">
+                <button onclick="closeConfigModal()" class="px-6 py-2.5 text-sm font-bold text-gray-400">Batal</button>
+                <button onclick="saveConfig()" class="px-10 py-2.5 text-sm font-bold bg-blue-600 text-white rounded-lg shadow-lg">OK</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Winner (FULL SCREEN MODE) -->
+    <div id="winner-modal" class="fixed inset-0 bg-black hidden items-center justify-center z-[100] transition-all overflow-hidden animate-fadeIn">
+        <div class="w-full h-full p-8 md:p-20 flex flex-col items-center justify-center relative">
+            
+            <div class="absolute inset-0 bg-gradient-to-b from-blue-900/20 via-black to-green-900/20 pointer-events-none"></div>
+
+            <div class="w-full max-w-7xl flex flex-col md:flex-row gap-12 lg:gap-24 items-center justify-center z-10">
+                
+                <div id="prize-display-area" class="hidden w-full md:w-1/2 flex flex-col items-center">
+                    <p class="text-lg text-green-400 font-black uppercase tracking-[0.4em] mb-8 animate-pulse">Hadiah Pusingan Ini</p>
+                    <div class="w-full aspect-square max-w-xl rounded-[3rem] border-4 border-green-500/20 overflow-hidden shadow-[0_0_100px_rgba(34,197,94,0.3)] bg-slate-900/50">
+                        <img id="winner-prize-el" src="" class="w-full h-full object-contain p-4 transition-transform duration-1000">
+                    </div>
+                </div>
+
+                <div class="flex-1 flex flex-col items-center justify-center text-center">
+                    <!-- Hitung Mundur Cabutan -->
+                    <div id="draw-number-display" class="text-xl font-black text-yellow-400 uppercase tracking-[0.4em] mb-4 drop-shadow-md">CABUTAN BERTUAH KE-65</div>
+                    
+                    <div class="text-sm font-bold text-blue-500 uppercase tracking-[1em] mb-12 opacity-90">Pemenang Ialah!</div>
+                    
+                    <div id="winner-image-container" class="hidden mb-12 w-56 h-56 rounded-full border-8 border-blue-600/40 overflow-hidden shadow-[0_0_80px_rgba(37,99,235,0.4)] bg-slate-800">
+                        <img id="winner-image-el" src="" class="w-full h-full object-cover">
+                    </div>
+
+                    <div id="winner-name" class="text-7xl md:text-9xl font-black text-white mb-20 tracking-tighter drop-shadow-[0_10px_10px_rgba(0,0,0,1)] leading-tight"></div>
+                    
+                    <div class="flex gap-8 w-full max-w-xl">
+                        <button id="close-modal" class="flex-1 py-6 bg-white/10 hover:bg-white/20 text-white font-bold rounded-3xl transition-all active:scale-95 text-xl border border-white/10 backdrop-blur-sm">Tutup</button>
+                        <button id="remove-winner-btn" class="flex-1 py-6 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-3xl transition-all shadow-[0_0_40px_rgba(37,99,235,0.3)] active:scale-95 text-xl">Keluarkan</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Prompt Nama Imej -->
+    <div id="prompt-modal" class="fixed inset-0 bg-black/80 hidden items-center justify-center z-[110] px-4 backdrop-blur-sm">
+        <div class="bg-[#242425] p-6 rounded-2xl border border-[#444] w-full max-w-sm shadow-2xl">
+            <p class="text-sm font-bold text-white mb-4">Berikan nama untuk entri imej ini:</p>
+            <input type="text" id="prompt-name-input" class="w-full bg-slate-800 border border-slate-700 rounded-lg p-3 text-white outline-none mb-4 focus:ring-2 focus:ring-blue-500" placeholder="Nama entri...">
+            <div class="flex gap-3">
+                <button id="prompt-cancel" class="flex-1 py-2 bg-gray-700 text-white rounded-lg font-bold">Batal</button>
+                <button id="prompt-ok" class="flex-1 py-2 bg-blue-600 text-white rounded-lg font-bold">Simpan</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let namesInput, entryCount, spinBtn, winnerModal, winnerNameText, closeModal, removeWinnerBtn, shuffleBtn, sortBtn, logoTrigger, adminPanel, spinDisplay, fullscreenBtn, exitFullscreenBtn, customizeBtn, configModal, appBody, tabEntries, tabResults, contentEntries, contentResults, resultsList, noResults, resultCountSpan;
+        let adminSearch, adminTurnInput, adminSearchResults, riggedListContainer;
+        let addImageBtn, imageUpload, winnerImageContainer, winnerImageEl, promptModal, promptNameInput, promptCancel, promptOk;
+        let prizeTurnInput, prizeUploadTrigger, prizeImageUpload, prizeListContainer, winnerPrizeEl, prizeDisplayArea, drawNumberDisplay;
+
+        const canvas = document.getElementById('wheel-canvas');
+        const ctx = canvas.getContext('2d');
+        const offscreenCanvas = document.createElement('canvas');
+        const offCtx = offscreenCanvas.getContext('2d');
+        offscreenCanvas.width = 1000; offscreenCanvas.height = 1000;
+
+        let config = { sound: 'ticking', volume: 50, spinTime: 7, maxNames: 500, showTitle: true, displayDuplicates: true, spinSlowly: false };
+        let names = ["Ali", "Abu", "Siti", "Ah Chong", "Ramasamy", "Fatimah", "Zul", "Mei Ling"];
+        let entryImagesMap = {}; 
+        let prizeImagesMap = {}; 
+        let resultsArr = [];
+        let currentRotation = 0;
+        let isSpinning = false;
+        let lastWinner = "";
+        let spinCount = 0;
+        let audioCtx = null;
+        let riggedWinnersMap = {}; 
+        let tempImageBase64 = null;
+
+        function initAudio() { if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+
+        function playTick() {
+            if (!audioCtx || config.sound === 'none') return;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(600, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(100, audioCtx.currentTime + 0.05);
+            gain.gain.setValueAtTime((config.volume / 100) * 0.15, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.05);
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            osc.start(); osc.stop(audioCtx.currentTime + 0.05);
+        }
+
+        function playWinSound() {
+            if (!audioCtx || config.sound === 'none') return;
+            const now = audioCtx.currentTime;
+            const vol = config.volume / 100;
+            const notes = [261.63, 329.63, 392.00, 523.25];
+            notes.forEach((freq, i) => {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(freq, now + i * 0.12);
+                gain.gain.setValueAtTime(0, now + i * 0.12);
+                gain.gain.linearRampToValueAtTime(vol * 0.2, now + i * 0.12 + 0.05);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.12 + 1.0);
+                osc.connect(gain); gain.connect(audioCtx.destination);
+                osc.start(now + i * 0.12); osc.stop(now + i * 0.12 + 1.2);
+            });
+        }
+
+        const colors = ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
+
+        function updateElementRefs() {
+            namesInput = document.getElementById('names-input');
+            entryCount = document.getElementById('entry-count');
+            spinBtn = document.getElementById('spin-btn');
+            winnerModal = document.getElementById('winner-modal');
+            winnerNameText = document.getElementById('winner-name');
+            closeModal = document.getElementById('close-modal');
+            removeWinnerBtn = document.getElementById('remove-winner-btn');
+            shuffleBtn = document.getElementById('shuffle-btn');
+            sortBtn = document.getElementById('sort-btn');
+            logoTrigger = document.getElementById('logo-trigger');
+            adminPanel = document.getElementById('admin-panel');
+            spinDisplay = document.getElementById('current-spin-display');
+            fullscreenBtn = document.getElementById('fullscreen-btn');
+            exitFullscreenBtn = document.getElementById('exit-fullscreen-btn');
+            customizeBtn = document.getElementById('customize-btn');
+            configModal = document.getElementById('customize-modal');
+            appBody = document.getElementById('app-body');
+            tabEntries = document.getElementById('tab-entries');
+            tabResults = document.getElementById('tab-results');
+            contentEntries = document.getElementById('content-entries');
+            contentResults = document.getElementById('content-results');
+            resultsList = document.getElementById('results-list');
+            noResults = document.getElementById('no-results');
+            resultCountSpan = document.getElementById('result-count');
+            adminSearch = document.getElementById('admin-search');
+            adminTurnInput = document.getElementById('admin-turn-input');
+            adminSearchResults = document.getElementById('admin-search-results');
+            riggedListContainer = document.getElementById('rigged-list-container');
+            addImageBtn = document.getElementById('add-image-btn');
+            imageUpload = document.getElementById('image-upload');
+            winnerImageContainer = document.getElementById('winner-image-container');
+            winnerImageEl = document.getElementById('winner-image-el');
+            promptModal = document.getElementById('prompt-modal');
+            promptNameInput = document.getElementById('prompt-name-input');
+            promptCancel = document.getElementById('prompt-cancel');
+            promptOk = document.getElementById('prompt-ok');
+            prizeTurnInput = document.getElementById('prize-turn-input');
+            prizeUploadTrigger = document.getElementById('prize-upload-trigger');
+            prizeImageUpload = document.getElementById('prize-image-upload');
+            prizeListContainer = document.getElementById('prize-list-container');
+            winnerPrizeEl = document.getElementById('winner-prize-el');
+            prizeDisplayArea = document.getElementById('prize-display-area');
+            drawNumberDisplay = document.getElementById('draw-number-display');
+        }
+
+        function updateWheelBuffer() {
+            const centerX = 500; const centerY = 500; const radius = 480;
+            offCtx.clearRect(0, 0, 1000, 1000);
+            if (names.length === 0) return;
+            const visibleNames = names.slice(0, config.maxNames);
+            const sliceAngle = (Math.PI * 2) / visibleNames.length;
+            visibleNames.forEach((name, i) => {
+                const startAngle = i * sliceAngle;
+                offCtx.beginPath(); offCtx.moveTo(centerX, centerY);
+                offCtx.arc(centerX, centerY, radius, startAngle, startAngle + sliceAngle);
+                offCtx.fillStyle = colors[i % colors.length]; offCtx.fill();
+                offCtx.strokeStyle = "rgba(255,255,255,0.1)"; offCtx.lineWidth = 1; offCtx.stroke();
+                offCtx.save(); offCtx.translate(centerX, centerY); offCtx.rotate(startAngle + sliceAngle/2);
+                offCtx.textAlign = "right"; offCtx.fillStyle = "#fff";
+                const fontSize = Math.max(12, Math.min(50, 700 / visibleNames.length));
+                offCtx.font = `700 ${fontSize}px Roboto`;
+                offCtx.fillText(name.length > 20 ? name.substring(0, 17) + "..." : name, radius - 40, fontSize/3);
+                offCtx.restore();
+            });
+            offCtx.beginPath(); offCtx.arc(centerX, centerY, 65, 0, Math.PI * 2);
+            offCtx.fillStyle = "#fff"; offCtx.fill();
+            offCtx.strokeStyle = "rgba(0,0,0,0.1)"; offCtx.lineWidth = 8; offCtx.stroke();
+        }
+
+        function drawWheel() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            if (names.length === 0) {
+                ctx.fillStyle = "#444"; ctx.font = "bold 40px Roboto"; ctx.textAlign = "center";
+                ctx.fillText("Masukkan nama untuk mula", canvas.width/2, canvas.height/2);
+                return;
+            }
+            ctx.save();
+            ctx.translate(canvas.width / 2, canvas.height / 2);
+            ctx.rotate(currentRotation);
+            ctx.drawImage(offscreenCanvas, -500, -500);
+            ctx.restore();
+        }
+
+        let debounceTimer;
+        function updateNames() {
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(() => {
+                const raw = namesInput ? namesInput.value.trim() : "";
+                names = raw ? raw.split('\n').map(n => n.trim()).filter(n => n !== "") : [];
+                if (entryCount) entryCount.textContent = names.length;
+                updateWheelBuffer();
+                drawWheel();
+                updateAdminSearchList();
+            }, 250);
+        }
+
+        function updateAdminSearchList() {
+            if (!adminSearch || !adminSearchResults) return;
+            const query = adminSearch.value.toLowerCase();
+            const filtered = names.filter(n => n.toLowerCase().includes(query)).slice(0, 30);
+            adminSearchResults.innerHTML = filtered.map(name => `
+                <div class="p-2 border-b border-slate-700 hover:bg-indigo-600 cursor-pointer text-xs transition-colors" onclick="addRiggedWinner('${name.replace(/'/g, "\\'")}')">
+                    ${name}
+                </div>
+            `).join('');
+            if (filtered.length === 0) adminSearchResults.innerHTML = `<div class="p-4 text-center text-gray-500 text-[10px]">Tiada nama ditemui</div>`;
+        }
+
+        window.addRiggedWinner = function(name) {
+            const turn = parseInt(adminTurnInput.value);
+            if (isNaN(turn) || turn < 1) return;
+            riggedWinnersMap[turn] = name;
+            renderRiggedList();
+            adminTurnInput.value = turn + 1;
+        }
+
+        window.removeRiggedEntry = function(turn) {
+            delete riggedWinnersMap[turn];
+            renderRiggedList();
+        }
+
+        function renderRiggedList() {
+            if (!riggedListContainer) return;
+            const sortedTurns = Object.keys(riggedWinnersMap).sort((a, b) => a - b);
+            riggedListContainer.innerHTML = sortedTurns.map(turn => `
+                <div class="flex justify-between items-center bg-slate-800 p-2 mb-1 rounded border border-slate-700 group animate-fadeIn">
+                    <span class="text-[11px] font-bold text-indigo-400">#${turn}: <span class="text-white">${riggedWinnersMap[turn]}</span></span>
+                    <button onclick="removeRiggedEntry(${turn})" class="text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><i class="fa-solid fa-trash-can"></i></button>
+                </div>
+            `).join('');
+        }
+
+        function handlePrizeUpload(e) {
+            const file = e.target.files[0];
+            const turn = parseInt(prizeTurnInput.value);
+            if (!file || isNaN(turn)) return;
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                prizeImagesMap[turn] = event.target.result;
+                renderPrizeList();
+                prizeTurnInput.value = turn + 1;
+                prizeImageUpload.value = "";
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function removePrizeEntry(turn) {
+            delete prizeImagesMap[turn];
+            renderPrizeList();
+        }
+        window.removePrizeEntry = removePrizeEntry;
+
+        function renderPrizeList() {
+            const sortedTurns = Object.keys(prizeImagesMap).sort((a, b) => a - b);
+            prizeListContainer.innerHTML = sortedTurns.map(turn => `
+                <div class="flex items-center gap-3 bg-slate-900 p-2 rounded-lg border border-slate-700 animate-fadeIn">
+                    <div class="w-10 h-10 rounded border border-slate-700 overflow-hidden bg-black shrink-0">
+                        <img src="${prizeImagesMap[turn]}" class="w-full h-full object-cover">
+                    </div>
+                    <div class="flex-1">
+                        <p class="text-[10px] font-bold text-green-400 uppercase">Pusingan #${turn}</p>
+                    </div>
+                    <button onclick="removePrizeEntry(${turn})" class="text-gray-500 hover:text-red-500 p-2"><i class="fa-solid fa-xmark text-xs"></i></button>
+                </div>
+            `).join('');
+            if (sortedTurns.length === 0) prizeListContainer.innerHTML = `<p class="text-[10px] text-gray-600 text-center py-4">Belum ada hadiah dirancang.</p>`;
+        }
+
+        function spin() {
+            if (isSpinning || names.length === 0) return;
+            initAudio();
+            isSpinning = true;
+            spinCount++;
+            if (spinDisplay) spinDisplay.textContent = `Pusingan: ${spinCount}`;
+            const startTime = performance.now();
+            const duration = config.spinTime * 1000;
+            const startRotation = currentRotation;
+            let finalTargetRotation;
+            const riggedWinnerName = riggedWinnersMap[spinCount];
+            const riggedIdx = riggedWinnerName ? names.indexOf(riggedWinnerName) : -1;
+            if (riggedIdx !== -1) {
+                const visibleCount = Math.min(names.length, config.maxNames);
+                const sliceAngle = (Math.PI * 2) / visibleCount;
+                const stopAngleAtZero = (Math.PI * 2) - ((riggedIdx % visibleCount) * sliceAngle + (sliceAngle / 2));
+                const currentMod = startRotation % (Math.PI * 2);
+                let delta = (stopAngleAtZero - currentMod + (Math.PI * 2)) % (Math.PI * 2);
+                if (delta < 0.5) delta += Math.PI * 2;
+                finalTargetRotation = startRotation + (Math.PI * 2 * 10) + delta;
+            } else {
+                finalTargetRotation = startRotation + (Math.PI * 2 * (8 + Math.random() * 4)) + Math.random() * Math.PI * 2;
+            }
+            let lastTickIdx = -1;
+            function animate(time) {
+                const elapsed = time - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+                const easeOut = 1 - Math.pow(1 - progress, 3);
+                currentRotation = startRotation + (finalTargetRotation - startRotation) * easeOut;
+                const visibleCount = Math.min(names.length, config.maxNames);
+                const sliceAngle = (Math.PI * 2) / visibleCount;
+                const currentTickIdx = Math.floor(((Math.PI * 2) - (currentRotation % (Math.PI * 2)) + (Math.PI * 2)) % (Math.PI * 2) / sliceAngle) % visibleCount;
+                if (currentTickIdx !== lastTickIdx) { playTick(); lastTickIdx = currentTickIdx; }
+                drawWheel();
+                if (progress < 1) requestAnimationFrame(animate);
+                else { isSpinning = false; finishSpin(); }
+            }
+            requestAnimationFrame(animate);
+        }
+
+        function finishSpin() {
+            const visibleCount = Math.min(names.length, config.maxNames);
+            const sliceAngle = (Math.PI * 2) / visibleCount;
+            const normRot = (currentRotation % (Math.PI * 2) + (Math.PI * 2)) % (Math.PI * 2);
+            let winIdx = Math.floor(((Math.PI * 2) - normRot) / sliceAngle) % visibleCount;
+            lastWinner = names[winIdx];
+            
+            // Hitung mundul dari 65 (66 - spinCount)
+            const drawNumber = 66 - spinCount;
+            if (drawNumberDisplay) {
+                drawNumberDisplay.textContent = `CABUTAN BERTUAH KE-${drawNumber}`;
+            }
+
+            if (entryImagesMap[lastWinner]) {
+                winnerImageEl.src = entryImagesMap[lastWinner];
+                winnerImageContainer.classList.remove('hidden');
+            } else { winnerImageContainer.classList.add('hidden'); }
+
+            const turnPrize = prizeImagesMap[spinCount];
+            if (turnPrize) {
+                winnerPrizeEl.src = turnPrize;
+                prizeDisplayArea.classList.remove('hidden');
+            } else { prizeDisplayArea.classList.add('hidden'); }
+
+            if (winnerNameText) winnerNameText.textContent = lastWinner;
+            if (winnerModal) { 
+                winnerModal.classList.remove('hidden'); 
+                winnerModal.classList.add('flex');
+                document.querySelector('nav').classList.add('opacity-0');
+            }
+
+            resultsArr.unshift({name: lastWinner, time: new Date().toLocaleTimeString()});
+            if (resultCountSpan) resultCountSpan.textContent = resultsArr.length;
+            if (noResults) noResults.classList.add('hidden');
+            if (resultsList) resultsList.innerHTML = resultsArr.map(r => `<div class="bg-[#242425] p-3 rounded border border-[#333] flex justify-between"><span>${r.name}</span><span class="text-gray-500">${r.time}</span></div>`).join('');
+            playWinSound();
+            createConfetti();
+        }
+
+        window.switchConfigTab = function(tab) {
+            ['during', 'after', 'appearance'].forEach(t => {
+                const btn = document.getElementById(`tab-config-${t}`);
+                const content = document.getElementById(`config-content-${t}`);
+                if (btn && content) {
+                    btn.className = (t === tab) ? "px-6 py-4 text-sm font-bold border-b-2 border-blue-500 text-white transition-all" : "px-6 py-4 text-sm font-bold text-gray-500 transition-all";
+                    content.classList.toggle('hidden', t !== tab);
+                }
+            });
+        }
+
+        window.closeConfigModal = function() { configModal.classList.add('hidden'); configModal.classList.remove('flex'); }
+        window.saveConfig = function() {
+            config.sound = document.getElementById('config-sound').value;
+            config.volume = parseInt(document.getElementById('config-volume').value);
+            config.spinTime = parseInt(document.getElementById('config-spin-time').value);
+            config.maxNames = parseInt(document.getElementById('config-max-names').value);
+            window.closeConfigModal(); updateWheelBuffer(); drawWheel();
+        }
+
+        function createConfetti() {
+            for (let i = 0; i < 150; i++) {
+                const c = document.createElement('div'); c.className = 'confetti';
+                const col = colors[Math.floor(Math.random() * colors.length)];
+                c.style.cssText = `width:12px;height:12px;background:${col};left:${Math.random()*100}vw;top:-20px;`;
+                document.body.appendChild(c);
+                c.animate([{top:'-20px',opacity:1},{top:'100vh',opacity:0,transform:`rotate(${Math.random()*1500}deg)`}],{duration:3000+Math.random()*2500, easing:'ease-out'}).onfinish = () => c.remove();
+            }
+        }
+
+        function handleImageUpload(e) {
+            const file = e.target.files[0]; if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                tempImageBase64 = event.target.result;
+                promptModal.classList.remove('hidden'); promptModal.classList.add('flex');
+                promptNameInput.focus();
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function saveImageEntry() {
+            const name = promptNameInput.value.trim();
+            if (name && tempImageBase64) {
+                namesInput.value = namesInput.value.trim() ? namesInput.value + "\n" + name : name;
+                entryImagesMap[name] = tempImageBase64;
+                tempImageBase64 = null; promptNameInput.value = "";
+                promptModal.classList.add('hidden'); promptModal.classList.remove('flex');
+                updateNames();
+            }
+        }
+
+        window.onload = function() {
+            updateElementRefs();
+            if (namesInput) {
+                namesInput.value = names.join('\n');
+                namesInput.addEventListener('input', updateNames);
+            }
+            updateNames();
+            if (spinBtn) spinBtn.addEventListener('click', spin);
+            if (closeModal) closeModal.addEventListener('click', () => {
+                winnerModal.classList.add('hidden');
+                document.querySelector('nav').classList.remove('opacity-0');
+            });
+            if (removeWinnerBtn) removeWinnerBtn.addEventListener('click', () => {
+                const idx = names.indexOf(lastWinner);
+                if (idx > -1) { 
+                    const name = names[idx]; names.splice(idx, 1); delete entryImagesMap[name];
+                    if(namesInput) namesInput.value = names.join('\n'); updateNames(); 
+                }
+                winnerModal.classList.add('hidden');
+                document.querySelector('nav').classList.remove('opacity-0');
+            });
+            if (shuffleBtn) shuffleBtn.addEventListener('click', () => { names.sort(() => Math.random() - 0.5); if(namesInput) namesInput.value = names.join('\n'); updateNames(); });
+            if (sortBtn) sortBtn.addEventListener('click', () => { names.sort(); if(namesInput) namesInput.value = names.join('\n'); updateNames(); });
+            if (fullscreenBtn) fullscreenBtn.addEventListener('click', () => document.documentElement.requestFullscreen());
+            if (exitFullscreenBtn) exitFullscreenBtn.addEventListener('click', () => document.exitFullscreen());
+            if (customizeBtn) customizeBtn.addEventListener('click', () => { if (configModal) { configModal.classList.remove('hidden'); configModal.classList.add('flex'); } });
+            if (adminSearch) adminSearch.addEventListener('input', updateAdminSearchList);
+            if (addImageBtn) addImageBtn.addEventListener('click', () => imageUpload.click());
+            if (imageUpload) imageUpload.addEventListener('change', handleImageUpload);
+            if (promptOk) promptOk.addEventListener('click', saveImageEntry);
+            if (promptCancel) promptCancel.addEventListener('click', () => { tempImageBase64 = null; promptModal.classList.add('hidden'); promptModal.classList.remove('flex'); });
+            if (prizeUploadTrigger) prizeUploadTrigger.addEventListener('click', () => prizeImageUpload.click());
+            if (prizeImageUpload) prizeImageUpload.addEventListener('change', handlePrizeUpload);
+            document.addEventListener('fullscreenchange', () => {
+                if (document.fullscreenElement) { appBody.classList.add('is-fullscreen'); } 
+                else { appBody.classList.remove('is-fullscreen'); }
+                setTimeout(() => { updateWheelBuffer(); drawWheel(); }, 150);
+            });
+            tabEntries.addEventListener('click', () => { tabEntries.classList.add('tab-active'); tabResults.classList.remove('tab-active'); contentEntries.classList.remove('hidden'); contentResults.classList.add('hidden'); });
+            tabResults.addEventListener('click', () => { tabResults.classList.add('tab-active'); tabEntries.classList.remove('tab-active'); contentResults.classList.remove('hidden'); contentEntries.classList.add('hidden'); });
+            let clicks = 0; logoTrigger.addEventListener('click', () => { clicks++; if (clicks >= 3) { adminPanel.classList.toggle('show'); updateAdminSearchList(); renderRiggedList(); renderPrizeList(); clicks = 0; } });
+        };
+    </script>
+</body>
+</html>
